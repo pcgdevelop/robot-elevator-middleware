@@ -122,6 +122,7 @@ export class ElevatorService {
       endAtMs: number; // when we plan to stop extending (client request horizon)
       timer?: NodeJS.Timeout;
       active: boolean;
+      tick?: () => Promise<void>;
     }
   > = new Map();
 
@@ -640,6 +641,222 @@ export class ElevatorService {
     const res = await waitForResponse(connection, String(requestId), 10, true);
     logIncoming('kone websocket acknowledgement', res);
     return res;
+  }
+
+  private monitorElevatorApproachAndDelayDoors(params: {
+    request: CallElevatorRequestDTO;
+    buildingId: string;
+    groupId: string;
+    fromFloor: number;
+    toFloor: number;
+  }): void {
+    const minHoldSeconds = 30;
+    const holdSecondsEnv = Number(
+      process.env.KONE_APPROACH_DOOR_DELAY_SECONDS,
+    );
+    const configuredHoldSeconds = Number.isFinite(holdSecondsEnv)
+      ? Math.floor(holdSecondsEnv)
+      : minHoldSeconds;
+    const holdSeconds = Math.max(minHoldSeconds, configuredHoldSeconds);
+
+    const monitorDurationEnv = Number(
+      process.env.KONE_APPROACH_MONITOR_DURATION_SECONDS,
+    );
+    const configuredMonitorSeconds = Number.isFinite(monitorDurationEnv)
+      ? Math.floor(monitorDurationEnv)
+      : 120;
+    const monitorDurationSec = Math.max(60, configuredMonitorSeconds);
+
+    const timeoutEnv = Number(process.env.KONE_APPROACH_MONITOR_TIMEOUT_MS);
+    const configuredTimeoutMs = Number.isFinite(timeoutEnv)
+      ? timeoutEnv
+      : monitorDurationSec * 1000;
+    const timeoutMs = Math.max(holdSeconds * 2000, configuredTimeoutMs);
+
+    const { request, buildingId, groupId, fromFloor, toFloor } = params;
+
+    void (async () => {
+      let connection: WebSocket | undefined;
+      const ctxKey = this.getDoorCtxKey(
+        request.deviceUuid,
+        buildingId,
+        groupId,
+        request.liftNo,
+      );
+      let doorContext = this.lastDoorHoldContext.get(ctxKey);
+      let destinationArea: number | undefined;
+
+      try {
+        const topology = await this.getBuildingTopology(buildingId, groupId);
+        destinationArea = this.resolveAreaIdForFloor(
+          buildingId,
+          groupId,
+          topology,
+          toFloor,
+          doorContext?.terminalId,
+        );
+      } catch (err) {
+        console.error('Failed to pre-resolve destination area', err);
+      }
+
+      try {
+        const accessToken = await this.accessTokenService.getAccessToken(
+          buildingId,
+          groupId,
+        );
+        connection = (await openWebSocketConnection(accessToken)) as unknown as WebSocket;
+        await this.ensureHeartbeat(connection, buildingId, groupId);
+
+        const subscriptionId = uuidv4();
+        const monitorPayload = {
+          type: 'site-monitoring',
+          requestId: subscriptionId,
+          buildingId,
+          callType: 'monitor',
+          groupId,
+          payload: {
+            sub: `approach-${Date.now()}`,
+            duration: monitorDurationSec,
+            subtopics: [`lift_${request.liftNo}/position`],
+          },
+        } as const;
+
+        logOutgoing('kone websocket monitor (approach)', monitorPayload);
+        connection.send(JSON.stringify(monitorPayload));
+        const ack = await waitForResponse(connection, subscriptionId, 10, true);
+        logIncoming('kone websocket acknowledgement (approach)', ack);
+
+        await new Promise<void>((resolve) => {
+          let settled = false;
+          let timer: NodeJS.Timeout | undefined;
+          let heldSource = false;
+          let heldDestination = false;
+          let leftSource = false;
+
+          const cleanup = () => {
+            if (settled) return;
+            settled = true;
+            if (timer) clearTimeout(timer);
+            connection?.off('message', onMessage);
+            resolve();
+          };
+
+          const scheduleCleanup = () => {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => {
+              cleanup();
+            }, timeoutMs);
+          };
+
+          const sendDoorHold = async (
+            floorType: 'source' | 'destination',
+            meta?: { currentFloor?: number; isStopped?: boolean },
+          ) => {
+            const latestCtx = this.lastDoorHoldContext.get(ctxKey);
+            if (latestCtx) {
+              doorContext = latestCtx;
+            }
+            const delayRequest = new DelayDoorRequestDTO();
+            delayRequest.appname = request.appname;
+            delayRequest.check = request.check;
+            delayRequest.sign = request.sign;
+            delayRequest.deviceUuid = request.deviceUuid;
+            delayRequest.placeId = request.placeId;
+            delayRequest.ts = Math.floor(Date.now() / 1000);
+            delayRequest.liftNo = request.liftNo;
+            delayRequest.seconds = holdSeconds;
+
+            const hasDestinationArea =
+              typeof destinationArea === 'number' &&
+              !Number.isNaN(destinationArea);
+
+            if (floorType === 'destination' && doorContext && hasDestinationArea) {
+              const resolvedArea = Number(destinationArea);
+              if (!Number.isNaN(resolvedArea)) {
+                const updatedContext = {
+                  ...doorContext,
+                  servedArea: resolvedArea,
+                  updatedAt: Date.now(),
+                };
+                doorContext = updatedContext;
+                this.lastDoorHoldContext.set(ctxKey, updatedContext);
+              }
+            }
+
+            const debugServedArea =
+              floorType === 'destination' && hasDestinationArea
+                ? Number(destinationArea)
+                : doorContext?.servedArea;
+            logOutgoing('kone monitor door_hold trigger', {
+              floorType,
+              servedArea: debugServedArea,
+              fromFloor,
+              toFloor,
+              currentFloor: meta?.currentFloor ?? null,
+              isStopped: Boolean(meta?.isStopped),
+              leftSource,
+            });
+
+            try {
+              await this.delayElevatorDoors(delayRequest);
+            } catch (err) {
+              console.error('Failed to auto-delay elevator doors', err);
+            }
+          };
+
+          const onMessage = async (raw: string) => {
+            try {
+              const msg = JSON.parse(raw);
+              const isPosition =
+                msg?.subtopic === `lift_${request.liftNo}/position` ||
+                msg?.callType === 'monitor-lift-position';
+              if (!isPosition) {
+                return;
+              }
+              logIncoming('kone websocket monitor (approach)', msg);
+              const position = plainToInstance(LiftPositionDTO, msg.data);
+              const currentFloor = Number(position?.cur);
+              if (Number.isNaN(currentFloor)) return;
+
+              scheduleCleanup();
+
+              const movingState = String(position?.moving_state || '').toUpperCase();
+              const isStopped = movingState === 'STOPPED' || movingState === 'STANDING';
+
+              if (!heldSource && currentFloor === fromFloor) {
+                heldSource = true;
+                await sendDoorHold('source', { currentFloor, isStopped });
+                return;
+              }
+
+              if (heldSource && !leftSource && currentFloor !== fromFloor) {
+                leftSource = true;
+              }
+
+              if (!heldDestination && leftSource && currentFloor === toFloor && isStopped) {
+                heldDestination = true;
+                await sendDoorHold('destination', { currentFloor, isStopped });
+              }
+
+              if (heldSource && heldDestination) {
+                cleanup();
+              }
+            } catch (err) {
+              console.error('Failed to process approach monitor message', err);
+            }
+          };
+
+          scheduleCleanup();
+          connection?.on('message', onMessage);
+        });
+      } catch (err) {
+        console.error('Failed monitoring elevator approach', err);
+      } finally {
+        try {
+          connection?.close();
+        } catch {}
+      }
+    })();
   }
 
   private async getBuildingTopology(
@@ -1420,6 +1637,13 @@ export class ElevatorService {
           response.errmsg = 'SUCCESS';
           response.sessionId = callEvent.data?.session_id;
           response.destination = toFloor;
+          this.monitorElevatorApproachAndDelayDoors({
+            request,
+            buildingId: targetBuildingId,
+            groupId: targetGroupId,
+            fromFloor,
+            toFloor,
+          });
           // Save context for future hold_open calls from the same client
           const liftDeck = Array.isArray(allowedLiftAreaIds)
             ? Number(allowedLiftAreaIds[0])
@@ -1570,22 +1794,52 @@ export class ElevatorService {
         return conn as unknown as WebSocket;
       };
 
-      // Constants for scheduling
-      const MAX_HARD_SEC = Math.max(
-        1,
-        Math.min(10, Number(process.env.KONE_HOLD_OPEN_MAX_HARD_SECONDS || 10)),
+      // Constants for scheduling based on KONE guidance (extend ~5s at a time)
+      const hardChunkEnv = Number(process.env.KONE_HOLD_OPEN_HARD_CHUNK_SECONDS);
+      const HARD_CHUNK_SEC = Number.isFinite(hardChunkEnv)
+        ? Math.max(1, Math.min(10, Math.floor(hardChunkEnv)))
+        : 5;
+
+      const maxHardEnv = Number(process.env.KONE_HOLD_OPEN_MAX_HARD_SECONDS);
+      const MAX_HARD_SEC = Number.isFinite(maxHardEnv)
+        ? Math.max(HARD_CHUNK_SEC, Math.min(30, Math.floor(maxHardEnv)))
+        : Math.max(HARD_CHUNK_SEC, 5);
+
+      const softBufferEnv = Number(
+        process.env.KONE_HOLD_OPEN_SOFT_BUFFER_SECONDS || 10,
       );
-      const SOFT_SEC = Math.max(
-        0,
-        Math.min(
-          MAX_HARD_SEC,
-          Number(process.env.KONE_HOLD_OPEN_SOFT_SECONDS || 5),
-        ),
-      );
-      const INTERVAL_MS = Math.max(
-        1000,
-        Number(process.env.KONE_HOLD_OPEN_SEND_INTERVAL_MS || 7000),
-      );
+      const SOFT_BUFFER_SEC = Number.isFinite(softBufferEnv)
+        ? Math.max(0, Math.floor(softBufferEnv))
+        : 10;
+
+      const maxSoftEnv = Number(process.env.KONE_HOLD_OPEN_MAX_SOFT_SECONDS);
+      const MAX_SOFT_SEC = Number.isFinite(maxSoftEnv)
+        ? Math.max(HARD_CHUNK_SEC, Math.min(60, Math.floor(maxSoftEnv)))
+        : Math.max(HARD_CHUNK_SEC, 15);
+
+      const intervalEnv = Number(process.env.KONE_HOLD_OPEN_SEND_INTERVAL_MS);
+      const defaultInterval = Math.max(500, HARD_CHUNK_SEC * 1000 - 1000);
+      let INTERVAL_MS = Number.isFinite(intervalEnv)
+        ? Math.max(500, Math.floor(intervalEnv))
+        : defaultInterval;
+      if (INTERVAL_MS >= HARD_CHUNK_SEC * 1000) {
+        INTERVAL_MS = HARD_CHUNK_SEC * 1000 - 250;
+      }
+      INTERVAL_MS = Math.max(500, INTERVAL_MS);
+
+      const computeSendTimings = (remainingMs: number) => {
+        const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+        const hardTimeSec = Math.max(
+          1,
+          Math.min(HARD_CHUNK_SEC, Math.min(MAX_HARD_SEC, remainingSec)),
+        );
+        const softTarget = hardTimeSec + SOFT_BUFFER_SEC;
+        const softTimeSec = Math.max(
+          hardTimeSec,
+          Math.min(MAX_SOFT_SEC, softTarget),
+        );
+        return { hardTimeSec, softTimeSec };
+      };
       const RELEASE_AT_END = String(
         process.env.KONE_HOLD_OPEN_SEND_RELEASE_AT_END || 'true',
       ).toLowerCase() !== 'false';
@@ -1618,8 +1872,34 @@ export class ElevatorService {
           existing.endAtMs = Date.now() + requestedSeconds * 1000;
           if (!isNaN(servedArea)) existing.servedArea = servedArea;
           if (!isNaN(liftDeck)) existing.liftDeck = liftDeck;
-          response.errcode = 0;
-          response.errmsg = 'SUCCESS';
+          if (existing.timer) {
+            clearTimeout(existing.timer);
+            existing.timer = undefined;
+          }
+          try {
+            if (typeof existing.tick === 'function') {
+              await existing.tick();
+            } else {
+              const remainingMs = existing.endAtMs - Date.now();
+              if (remainingMs > 500) {
+                const { hardTimeSec, softTimeSec } = computeSendTimings(remainingMs);
+                await this.sendHoldOpen(existing.connection, {
+                  buildingId,
+                  groupId: targetGroupId,
+                  servedArea: existing.servedArea,
+                  liftDeck: existing.liftDeck,
+                  hardTimeSec,
+                  softTimeSec,
+                });
+              }
+            }
+            response.errcode = 0;
+            response.errmsg = 'SUCCESS';
+          } catch (e) {
+            console.error('Failed to refresh door hold schedule', e);
+            response.errcode = 1;
+            response.errmsg = 'FAILED';
+          }
           return;
         }
 
@@ -1634,6 +1914,7 @@ export class ElevatorService {
           endAtMs: Date.now() + requestedSeconds * 1000,
           timer: undefined as unknown as NodeJS.Timeout | undefined,
           active: true,
+          tick: undefined as (() => Promise<void>) | undefined,
         };
         this.doorHoldTasks.set(ctxKey, task);
 
@@ -1668,8 +1949,7 @@ export class ElevatorService {
           }
 
           // Send an extension chunk (hard<=10) with soft time recommended 5s
-          const hardTimeSec = Math.min(MAX_HARD_SEC, Math.ceil(remainingMs / 1000));
-          const softTimeSec = Math.min(SOFT_SEC, hardTimeSec);
+          const { hardTimeSec, softTimeSec } = computeSendTimings(remainingMs);
           const sendStartedAt = Date.now();
           try {
             await this.sendHoldOpen(task.connection, {
@@ -1686,22 +1966,35 @@ export class ElevatorService {
 
           // Schedule next send a bit before hard time expiry
           const elapsed = Date.now() - sendStartedAt;
-          const nextIn = Math.max(0, INTERVAL_MS - elapsed);
+          const paddedWindow = Math.max(500, hardTimeSec * 1000 - 500);
+          const nextIn = Math.max(
+            250,
+            Math.min(paddedWindow, INTERVAL_MS) - elapsed,
+          );
           task.timer = setTimeout(tick, nextIn);
         };
+        task.tick = tick;
 
         // Send the first hold_open immediately and schedule next
         try {
+          const firstTimings = computeSendTimings(requestedSeconds * 1000);
           await this.sendHoldOpen(connection, {
             buildingId,
             groupId: targetGroupId,
             servedArea,
             liftDeck,
-            hardTimeSec: Math.min(MAX_HARD_SEC, requestedSeconds),
-            softTimeSec: Math.min(SOFT_SEC, Math.min(MAX_HARD_SEC, requestedSeconds)),
+            hardTimeSec: firstTimings.hardTimeSec,
+            softTimeSec: firstTimings.softTimeSec,
           });
           // Schedule next extension only if more time remains beyond our chosen interval
-          const nextIn = Math.min(INTERVAL_MS, requestedSeconds * 1000);
+          const paddedWindow = Math.max(
+            500,
+            firstTimings.hardTimeSec * 1000 - 500,
+          );
+          const nextIn = Math.min(
+            INTERVAL_MS,
+            Math.max(500, Math.min(requestedSeconds * 1000, paddedWindow)),
+          );
           task.timer = setTimeout(tick, nextIn);
           response.errcode = 0;
           response.errmsg = 'SUCCESS';
