@@ -1,0 +1,84 @@
+# Quellenindex
+
+Geprüfter Ausgangsbaum: 0d59028384ac2ee3f06b947dc6f9a7c8afb85685. API-Baum vollständig: True. 80 versionierte Dateien. Bei einem abgeschnittenen Baum ist vollständige Inventarisierung ausdrücklich offen. Dateinamen belegen keine fertige Produktfunktion.
+
+- `.dockerignore`
+- `.gitignore`
+- `.prettierrc`
+- `Dockerfile`
+- `README.md`
+- `docs/elevators/KONE/Elevator Call API solution validation test guide version 2.docx`
+- `docs/elevators/KONE/Equipment Status API solution validation test guide version 2.docx`
+- `docs/elevators/KONE/Service Info API solution validation test guide version 2.docx`
+- `docs/elevators/KONE/Service Robot API solution validation test guide version 2.docx`
+- `docs/elevators/KONE/authentication-api-v2.json`
+- `docs/elevators/KONE/elevator-websocket-api-v2.yaml`
+- `docs/elevators/KONE/equipment-status-2-rest-api-combined.json`
+- `docs/elevators/KONE/service-info-api-v2.json`
+- `docs/elevators/KONE/webhook-management-api.json`
+- `docs/robots/BIB/3RD Party Integration Parameters Instruction.pdf`
+- `docs/robots/BIB/3RD Party Intergration API interface.pdf`
+- `docs/robots/BIB/API interface for elevator BIB J40.pdf`
+- `docs/robots/BIB/BIB API.pdf`
+- `docs/robots/BIB/latest.pdf`
+- `docs/robots/BIB/latest.txt`
+- `eslint.config.mjs`
+- `nest-cli.json`
+- `package-lock.json`
+- `package.json`
+- `scripts/start-and-test.sh`
+- `src/app.module.ts`
+- `src/kone/auth/dto/AccessTokenData.ts`
+- `src/kone/auth/service/accessToken.service.ts`
+- `src/kone/baseDtos/BaseRequestDTO.ts`
+- `src/kone/baseDtos/BaseResponseDTO.ts`
+- `src/kone/common/equipment-status-2-functions.ts`
+- `src/kone/common/koneapi.specs.ts`
+- `src/kone/common/koneapi.ts`
+- `src/kone/common/operational-api-supporting-functions.ts`
+- `src/kone/common/service-info-2-functions.ts`
+- `src/kone/common/types.ts`
+- `src/kone/common/verify-signature.spec.ts`
+- `src/kone/common/verify-signature.ts`
+- `src/kone/device/controller/device.controller.spec.ts`
+- `src/kone/device/controller/device.controller.ts`
+- `src/kone/device/dto/DeviceBaseRequestDTO.ts`
+- `src/kone/device/dto/bind/BindDeviceRequestDTO.ts`
+- `src/kone/device/dto/bind/BindDeviceResponseDTO.ts`
+- `src/kone/device/dto/bind/BindDeviceResultDTO.ts`
+- `src/kone/device/dto/register/RegisterDeviceRequestDTO.ts`
+- `src/kone/device/dto/register/RegisterDeviceResponseDTO.ts`
+- `src/kone/device/dto/register/RegisterDeviceResultDTO.ts`
+- `src/kone/device/module/device.module.ts`
+- `src/kone/device/repository/device-binding.repository.ts`
+- `src/kone/device/repository/device-registry.repository.ts`
+- `src/kone/device/service/device.service.spec.ts`
+- `src/kone/device/service/device.service.ts`
+- `src/kone/elevator/controller/elevator.controller.spec.ts`
+- `src/kone/elevator/controller/elevator.controller.ts`
+- `src/kone/elevator/dtos/ElevatorBaseRequest.ts`
+- `src/kone/elevator/dtos/call/CallElevatorRequestDTO.ts`
+- `src/kone/elevator/dtos/call/CallElevatorResponseDTO.ts`
+- `src/kone/elevator/dtos/call/CallElevatorWebSocketResponseDTO.ts`
+- `src/kone/elevator/dtos/call/CallElevatorWebSocketResponseData.ts`
+- `src/kone/elevator/dtos/delay/DelayDoorRequestDTO.ts`
+- `src/kone/elevator/dtos/list/ListElevatorsRequestDTO.ts`
+- `src/kone/elevator/dtos/list/ListElevatorsResponseDTO.ts`
+- `src/kone/elevator/dtos/list/ListElevatorsResultDTO.ts`
+- `src/kone/elevator/dtos/monitor/LiftDoorDTO.ts`
+- `src/kone/elevator/dtos/monitor/LiftPositionDTO.ts`
+- `src/kone/elevator/dtos/reserve/ReserveAndCancelRequestDTO.ts`
+- `src/kone/elevator/dtos/status/LiftStatusRequestDTO.ts`
+- `src/kone/elevator/dtos/status/LiftStatusResponseDTO.ts`
+- `src/kone/elevator/dtos/status/LiftStatusResultDTO.ts`
+- `src/kone/elevator/module/elevator.module.ts`
+- `src/kone/elevator/service/elevator.service.spec.ts`
+- `src/kone/elevator/service/elevator.service.ts`
+- `src/kone/elevator/utils/lift-utils.ts`
+- `src/logger/gcp-logger.service.ts`
+- `src/main.ts`
+- `test/app.e2e-spec.ts`
+- `test/jest-e2e.json`
+- `tsconfig.build.json`
+- `tsconfig.json`
+- `yunji.json`
