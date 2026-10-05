@@ -1,0 +1,31 @@
+name: Engineering delivery foundation
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: read
+concurrency:
+  group: engineering-delivery-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ticket-and-documentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Test positive and negative ticket cases
+        run: python3 -m unittest discover -s .github/engineering -p 'test_*.py' -v
+      - name: Validate ticket and documentation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/engineering/delivery_gate.py

@@ -1,0 +1,29 @@
+name: Engineering — Reproduzierbarer Fehler
+description: Ist/Soll, Reproduktion, Version und Abnahme
+title: "[Bug] "
+labels: ["type:task"]
+body:
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Konkrete Schritte und synthetische Eingabe
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Ist, Soll und betroffene Version
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Regressionstest und Abnahmekriterien
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Quellenanker, Handbuch, Risiko und Rücknahme
+    validations:
+      required: true

@@ -1,0 +1,20 @@
+{
+  "repository": "pcgdevelop/robot-elevator-middleware",
+  "specification_status": "Draft; source discovery is not runtime acceptance",
+  "features": [
+    {
+      "id": "ROBOT-ELEVATOR-MIDDLEWARE-01",
+      "name": "Quellenbereich scripts",
+      "source": "scripts/start-and-test.sh",
+      "ticket": "pcgdevelop/robot-elevator-middleware#8",
+      "status": "Source discovery; acceptance open"
+    },
+    {
+      "id": "ROBOT-ELEVATOR-MIDDLEWARE-02",
+      "name": "Quellenbereich src",
+      "source": "src/app.module.ts",
+      "ticket": "pcgdevelop/robot-elevator-middleware#9",
+      "status": "Source discovery; acceptance open"
+    }
+  ]
+}

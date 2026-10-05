@@ -1,0 +1,46 @@
+name: Engineering — Story mit Abnahmekriterien
+description: Benutzerwert, Spezifikation und prüfbare Umsetzung
+title: "[Story] "
+labels: ["type:story"]
+body:
+  - type: textarea
+    id: story
+    attributes:
+      label: Rolle, gewünschtes Ergebnis und Nutzen
+      description: Als ... möchte ich ... damit ...
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Ausgangslage und begrenzter Umfang
+      description: Quelle, Problem, Beispiel, Abgrenzung und Abhängigkeiten
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Prüffähige Abnahmekriterien
+      description: Ausgangszustand, konkrete Aktion und erwartetes Ergebnis, einschließlich Fehler und Berechtigungen
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Testplan und synthetische Daten
+      description: Automatische Tests, Browserabnahme und erwarteter Nachweis
+    validations:
+      required: true
+  - type: textarea
+    id: docs
+    attributes:
+      label: Handbuch und Quellenanker
+      description: Funktions-ID, Kapitel und Pfade; vor Implementierung ergänzen
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risiko, externe Wirkungen und Rücknahme
+    validations:
+      required: true

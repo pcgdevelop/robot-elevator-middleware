@@ -1,0 +1,3 @@
+# Teststrategie
+
+Vorhandene CI und tatsächliche Build-/Testbefehle zuerst lesen. Risikoabhängig Regression, Berechtigungen, Verbraucher-/API-Verträge, isolierte Datenbankmigration/Wiederherstellung und Browserabläufe prüfen. Oberflächen auch Keyboard und mobile Nutzung; Hardware ausschließlich Simulatoren. Externe Anbieter in Tests stubben. Keine leeren Testskripte oder Agentenberichte als Suite zählen. Foundation: zwölf positive/negative Prüfungen mit Python-Standardbibliothek; sie ersetzt vorhandene Anwendungsprüfungen nicht. Laufzeiten, Abhängigkeiten, Performance und Barrierefreiheit bekommen belegte Baseline und kleine Folgetickets.
